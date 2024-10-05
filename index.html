@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash Stuffing 2.1</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+            margin: 0;
+            height: 100vh;
+        }
+
+        h2 {
+            margin-bottom: 10px;
+            color: #444;
+        }
+
+        .total-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 18px;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            color: #333;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #fff;
+            color: #333;
+            border: 2px solid #ccc;
+            padding: 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #f1f1f1;
+            color: #000;
+        }
+
+        .envelope-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .envelope-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            width: 220px;
+            text-align: center;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .envelope-card input, .envelope-card button {
+            margin: 8px 0;
+            width: 100%;
+        }
+
+        .envelope-card input[type="text"] {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            font-size: 16px;
+        }
+
+        .log-container {
+            margin-top: 20px;
+            width: 90%;
+            border: 1px solid #ddd;
+            padding: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .log-entry {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        .log-add {
+            color: #28a745;
+        }
+
+        .log-remove {
+            color: #dc3545;
+        }
+
+        @media (max-width: 600px) {
+            .envelope-card {
+                width: 100%;
+            }
+
+            .log-container {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="total-container">
+        Total Cash: <span id="totalCash">$0.00</span>
+    </div>
+
+    <div class="button-container">
+        <button onclick="addEnvelope()">Add Envelope</button>
+        <button onclick="resetAll()">Reset All Envelopes</button>
+        <button onclick="clearLog()">Clear Transaction Log</button>
+    </div>
+
+    <div class="envelope-container" id="envelopeContainer"></div>
+
+    <h2>Transaction Log</h2>
+    <div class="log-container" id="logContainer"></div>
+
+    <!-- Sound effect -->
+    <audio id="cashSound" src="/mnt/data/sound-effects-library-cash-register-sound.mp3"></audio>
+
+    <script>
+        const envelopeContainer = document.getElementById('envelopeContainer');
+        const logContainer = document.getElementById('logContainer');
+        const totalCashDisplay = document.getElementById('totalCash');
+        const cashSound = document.getElementById('cashSound');
+
+        // Load envelopes and transactions from localStorage
+        window.onload = function() {
+            const envelopes = JSON.parse(localStorage.getItem('envelopes')) || [];
+            const log = JSON.parse(localStorage.getItem('transactionLog')) || [];
+            envelopes.forEach(envelope => createEnvelopeCard(envelope.name, envelope.amount));
+            log.reverse().forEach(entry => addLogEntry(entry));  // Reverse to show most recent first
+            updateTotalCash();
+        };
+
+        // Save envelopes and transactions to localStorage
+        function saveEnvelopes() {
+            const envelopeData = [];
+            document.querySelectorAll('.envelope-card').forEach(card => {
+                const name = card.querySelector('.name-input').value;
+                const amount = parseFloat(card.querySelector('.amount-input').value.replace(/,/g, '')) || 0;
+                envelopeData.push({ name, amount });
+            });
+            localStorage.setItem('envelopes', JSON.stringify(envelopeData));
+            updateTotalCash();
+        }
+
+        function saveLog(logEntry) {
+            let log = JSON.parse(localStorage.getItem('transactionLog')) || [];
+            log.push(logEntry);
+            localStorage.setItem('transactionLog', JSON.stringify(log));
+        }
+
+        // Update total cash
+        function updateTotalCash() {
+            const total = Array.from(document.querySelectorAll('.envelope-card .amount-input'))
+                .reduce((sum, input) => sum + parseFloat(input.value.replace(/,/g, '')) || 0, 0);
+            totalCashDisplay.textContent = `$${formatCurrency(total)}`;
+        }
+
+        // Create a new envelope card
+        function createEnvelopeCard(name = "New Envelope", amount = 0) {
+            const card = document.createElement('div');
+            card.className = 'envelope-card';
+
+            card.innerHTML = `
+                <input type="text" class="name-input" value="${name}" onclick="selectAll(this)" onchange="saveEnvelopes()">
+                <span>$</span><input type="text" class="amount-input" value="${formatCurrency(amount)}" onchange="formatInput(this); saveEnvelopes()">
+                <button onclick="addCash(this)">Add Cash</button>
+                <button onclick="removeCash(this)">Remove Cash</button>
+                <button onclick="transferCash(this)">Transfer Cash</button>
+                <button onclick="deleteEnvelope(this)">Delete Envelope</button>
+            `;
+
+            envelopeContainer.appendChild(card);
+            saveEnvelopes();
+        }
+
+        // Select all text when clicking on input
+        function selectAll(input) {
+            input.select();
+        }
+
+        // Format input as currency
+        function formatInput(input) {
+            input.value = formatCurrency(parseFloat(input.value.replace(/,/g, '')) || 0);
+        }
+
+        // Format number as currency
+        function formatCurrency(amount) {
+            return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Add envelope
+        function addEnvelope() {
+            createEnvelopeCard();
+        }
+
+        // Reset all envelopes
+        function resetAll() {
+            if (confirm('Are you sure you want to delete all envelopes?')) {
+                envelopeContainer.innerHTML = '';
+                localStorage.removeItem('envelopes');
+                updateTotalCash();
+            }
+        }
+
+        // Delete envelope
+        function deleteEnvelope(button) {
+            const card = button.parentElement;
+            card.remove();
+            saveEnvelopes();
+        }
+
+        // Add cash
+        function addCash(button) {
+            const card = button.parentElement;
+            let amount = parseFloat(card.querySelector('.amount-input').value.replace(/,/g, '')) || 0;
+            const addAmount = prompt("Enter amount to add:");
+            if (addAmount) {
+                amount += parseFloat(addAmount);
+                card.querySelector('.amount-input').value = formatCurrency(amount);
+                saveEnvelopes();
+                logTransaction('add', addAmount, card.querySelector('.name-input').value);
+
+                // Play cash sound on adding cash
+                cashSound.play();
+            }
+        }
+
+        // Remove cash
+        function removeCash(button) {
+            const card = button.parentElement;
+            let amount = parseFloat(card.querySelector('.amount-input').value.replace(/,/g, '')) || 0;
+            const removeAmount = prompt("Enter amount to remove:");
+            if (removeAmount) {
+                amount -= parseFloat(removeAmount);
+                if (amount < 0) amount = 0;
+                card.querySelector('.amount-input').value = formatCurrency(amount);
+                saveEnvelopes();
+                logTransaction('remove', removeAmount, card.querySelector('.name-input').value);
+            }
+        }
+
+        // Transfer cash
+        function transferCash(button) {
+            const card = button.parentElement;
+            let amount = parseFloat(card.querySelector('.amount-input').value.replace(/,/g, '')) || 0;
+            const transferAmount = prompt("Enter amount to transfer:");
+            if (transferAmount && parseFloat(transferAmount) <= amount) {
+                const targetEnvelopeName = prompt("Enter the target envelope name:");
+                const targetEnvelope = Array.from(document.querySelectorAll('.envelope-card')).find(
+                    card => card.querySelector('.name-input').value === targetEnvelopeName
+                );
+
+                if (targetEnvelope) {
+                    amount -= parseFloat(transferAmount);
+                    card.querySelector('.amount-input').value = formatCurrency(amount);
+                    saveEnvelopes();
+
+                    let targetAmount = parseFloat(targetEnvelope.querySelector('.amount-input').value.replace(/,/g, '')) || 0;
+                    targetAmount += parseFloat(transferAmount);
+                    targetEnvelope.querySelector('.amount-input').value = formatCurrency(targetAmount);
+                    saveEnvelopes();
+
+                    logTransaction('transfer', transferAmount, card.querySelector('.name-input').value, targetEnvelopeName);
+                } else {
+                    alert("Target envelope not found.");
+                }
+            } else {
+                alert("Insufficient funds for transfer.");
+            }
+        }
+
+        // Log transaction
+        function logTransaction(type, amount, from, to = '') {
+            const logEntry = {
+                type,
+                amount: parseFloat(amount).toFixed(2),
+                from,
+                to,
+                timestamp: new Date().toLocaleString()
+            };
+            addLogEntry(logEntry);
+            saveLog(logEntry);
+        }
+
+        // Add log entry to UI
+        function addLogEntry(entry) {
+            const logEntryDiv = document.createElement('div');
+            logEntryDiv.classList.add('log-entry');
+            logEntryDiv.classList.add(entry.type === 'add' ? 'log-add' : entry.type === 'remove' ? 'log-remove' : 'log-transfer');
+
+            logEntryDiv.innerHTML = `
+                <strong>${entry.timestamp}</strong><br>
+                ${entry.type === 'transfer' ? `Transferred $${formatCurrency(parseFloat(entry.amount))} from ${entry.from} to ${entry.to}` :
+                `${entry.type === 'add' ? `Added $${formatCurrency(parseFloat(entry.amount))} to ${entry.from}` :
+                `Removed $${formatCurrency(parseFloat(entry.amount))} from ${entry.from}`}`}
+            `;
+            logContainer.prepend(logEntryDiv);  // Add the log entry at the top (most recent first)
+        }
+
+        // Clear transaction log
+        function clearLog() {
+            if (confirm('Are you sure you want to clear the transaction log?')) {
+                logContainer.innerHTML = '';
+                localStorage.removeItem('transactionLog');
+            }
+        }
+
+        // Save transaction log to localStorage
+        function saveLog(logEntry) {
+            let log = JSON.parse(localStorage.getItem('transactionLog')) || [];
+            log.unshift(logEntry); // Save new entries at the beginning (most recent)
+            localStorage.setItem('transactionLog', JSON.stringify(log));
+        }
+
+        // Format number as currency with commas
+        function formatCurrency(amount) {
+            return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Select all text when clicking on input
+        function selectAll(input) {
+            input.select();
+        }
+    </script>
+
+</body>
+</html>
+
